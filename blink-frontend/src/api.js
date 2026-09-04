@@ -18,7 +18,9 @@ async function request(path, options = {}) {
   }
 
   if (!res.ok) {
-    throw new Error((data && data.error) || `Request failed (${res.status})`);
+    const err = new Error((data && data.error) || `Request failed (${res.status})`);
+    if (data) err.data = data;
+    throw err;
   }
   return data;
 }
@@ -46,6 +48,14 @@ export function login({ email, password }) {
   });
 }
 
+export function googleAuth(payload) {
+  return request("/api/auth/google", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
 export function fetchProfile(token) {
   return request("/api/profile", {
     headers: { Authorization: `Bearer ${token}` },
@@ -68,9 +78,13 @@ export function sendChatMessage(message, history = []) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, history }),
-    // Chat replies take longer than a course lookup — give it more room.
-    signal: AbortSignal.timeout(20000),
+    // Chat replies give room for LLM generation
+    signal: AbortSignal.timeout(25000),
   });
+}
+
+export function fetchChatStatus() {
+  return request("/api/chat/status");
 }
 
 export function fetchDomains() {

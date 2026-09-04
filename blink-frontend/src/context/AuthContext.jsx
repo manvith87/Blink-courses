@@ -1,5 +1,11 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { login as apiLogin, signup as apiSignup, fetchProfile, updateProfile as apiUpdateProfile } from "../api.js";
+import {
+  login as apiLogin,
+  signup as apiSignup,
+  googleAuth as apiGoogleAuth,
+  fetchProfile,
+  updateProfile as apiUpdateProfile,
+} from "../api.js";
 
 const AUTH_STORAGE_KEY = "blink_token";
 
@@ -53,6 +59,15 @@ export function AuthProvider({ children }) {
     [persistSession]
   );
 
+  const googleLogin = useCallback(
+    async (payload) => {
+      const data = await apiGoogleAuth(payload);
+      persistSession(data.token, data.user);
+      return data.user;
+    },
+    [persistSession]
+  );
+
   const logout = useCallback(() => {
     localStorage.removeItem(AUTH_STORAGE_KEY);
     setToken(null);
@@ -68,7 +83,7 @@ export function AuthProvider({ children }) {
     [token]
   );
 
-  const value = { user, token, restoring, login, signup, logout, updateProfile };
+  const value = { user, token, restoring, login, signup, googleLogin, logout, updateProfile };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

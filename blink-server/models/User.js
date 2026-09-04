@@ -23,6 +23,20 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    google_id: {
+      type: String,
+      default: null,
+      index: true,
+    },
+    avatar_url: {
+      type: String,
+      default: null,
+    },
+    auth_provider: {
+      type: String,
+      enum: ["local", "google"],
+      default: "local",
+    },
   },
   {
     timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" },

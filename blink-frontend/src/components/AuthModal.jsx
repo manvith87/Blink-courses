@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function AuthModal({ open, onClose }) {
-  const { user, login, signup, logout, updateProfile } = useAuth();
-  const [tab, setTab] = useState("login");
+  const { user, login, signup, googleLogin, logout, updateProfile } = useAuth();
+  const [tab, setTab] = useState("login"); // "login" | "signup" | "google"
   const [authMsg, setAuthMsg] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
 
   const [loginFields, setLoginFields] = useState({ email: "", password: "" });
   const [signupFields, setSignupFields] = useState({ name: "", email: "", password: "" });
+  const [googleFields, setGoogleFields] = useState({ name: "", email: "", password: "" });
 
   const [profileFields, setProfileFields] = useState({
     name: "",
@@ -60,6 +61,7 @@ export default function AuthModal({ open, onClose }) {
     try {
       await login(loginFields.email.trim(), loginFields.password);
       setLoginFields({ email: "", password: "" });
+      onClose();
     } catch (err) {
       setAuthMsg(err.message || "Couldn't reach the backend. Is it running?");
     } finally {
@@ -74,11 +76,54 @@ export default function AuthModal({ open, onClose }) {
     try {
       await signup(signupFields.name.trim(), signupFields.email.trim(), signupFields.password);
       setSignupFields({ name: "", email: "", password: "" });
+      onClose();
     } catch (err) {
       setAuthMsg(err.message || "Couldn't reach the backend. Is it running?");
     } finally {
       setAuthBusy(false);
     }
+  }
+
+  async function handleGoogleSubmit(e) {
+    e.preventDefault();
+    setAuthMsg("");
+    setAuthBusy(true);
+
+    const email = googleFields.email.trim().toLowerCase();
+    const password = googleFields.password;
+    const name = googleFields.name.trim() || email.split("@")[0];
+
+    try {
+      await googleLogin({
+        email,
+        name,
+        password,
+      });
+      setGoogleFields({ name: "", email: "", password: "" });
+      onClose();
+    } catch (err) {
+      setAuthMsg(err.message || "Google authentication failed. Please verify your email and password.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  function handleStartGoogleFlow() {
+    setAuthMsg("");
+    // Pre-fill email/name if already typed in other tabs
+    if (tab === "signup" && signupFields.email) {
+      setGoogleFields((f) => ({
+        ...f,
+        email: signupFields.email,
+        name: signupFields.name,
+      }));
+    } else if (tab === "login" && loginFields.email) {
+      setGoogleFields((f) => ({
+        ...f,
+        email: loginFields.email,
+      }));
+    }
+    setTab("google");
   }
 
   async function handleProfileSave(e) {
@@ -141,22 +186,104 @@ export default function AuthModal({ open, onClose }) {
               <button
                 type="button"
                 className={"modal-tab" + (tab === "login" ? " active" : "")}
-                onClick={() => setTab("login")}
+                onClick={() => {
+                  setTab("login");
+                  setAuthMsg("");
+                }}
               >
                 Log in
               </button>
               <button
                 type="button"
                 className={"modal-tab" + (tab === "signup" ? " active" : "")}
-                onClick={() => setTab("signup")}
+                onClick={() => {
+                  setTab("signup");
+                  setAuthMsg("");
+                }}
               >
                 Sign up
+              </button>
+              <button
+                type="button"
+                className={"modal-tab" + (tab === "google" ? " active" : "")}
+                onClick={() => {
+                  setTab("google");
+                  setAuthMsg("");
+                }}
+              >
+                Google
               </button>
             </div>
 
             <div className={"form-msg error" + (authMsg ? " show" : "")}>{authMsg}</div>
 
-            {tab === "login" ? (
+            {/* Google Social Action Button on Login/Signup */}
+            {tab !== "google" && (
+              <div style={{ marginBottom: "1.25rem" }}>
+                <button
+                  type="button"
+                  className="google-btn"
+                  onClick={handleStartGoogleFlow}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "0.6rem",
+                    padding: "0.65rem 1rem",
+                    borderRadius: "0.5rem",
+                    backgroundColor: "#ffffff",
+                    color: "#1f2937",
+                    fontWeight: "600",
+                    fontSize: "0.875rem",
+                    border: "1px solid #e5e7eb",
+                    cursor: "pointer",
+                    boxShadow: "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseOver={(e) => (e.currentTarget.style.backgroundColor = "#f9fafb")}
+                  onMouseOut={(e) => (e.currentTarget.style.backgroundColor = "#ffffff")}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.66-5.17 3.66-9.17z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.36 24 12 24z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 10.04 0 12s.45 3.82 1.25 5.42l4.03-3.15z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.36 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
+                    />
+                  </svg>
+                  {tab === "login" ? "Sign in with Google" : "Sign up with Google"}
+                </button>
+
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    margin: "1.1rem 0 0.5rem 0",
+                    color: "var(--muted)",
+                    fontSize: "0.75rem",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  <span style={{ flex: 1, height: "1px", background: "var(--border)" }}></span>
+                  <span style={{ padding: "0 0.6rem" }}>or with email</span>
+                  <span style={{ flex: 1, height: "1px", background: "var(--border)" }}></span>
+                </div>
+              </div>
+            )}
+
+            {tab === "login" && (
               <form onSubmit={handleLogin}>
                 <h2 className="modal-title">Welcome back</h2>
                 <p className="modal-sub">Log in to update your profile.</p>
@@ -183,10 +310,12 @@ export default function AuthModal({ open, onClose }) {
                   />
                 </div>
                 <button type="submit" className="modal-submit" disabled={authBusy}>
-                  Log in
+                  {authBusy ? "Logging in…" : "Log in"}
                 </button>
               </form>
-            ) : (
+            )}
+
+            {tab === "signup" && (
               <form onSubmit={handleSignup}>
                 <h2 className="modal-title">Join Blink</h2>
                 <p className="modal-sub">Create a free account — no card, no catch.</p>
@@ -226,7 +355,55 @@ export default function AuthModal({ open, onClose }) {
                   <span className="form-hint">At least 8 characters.</span>
                 </div>
                 <button type="submit" className="modal-submit" disabled={authBusy}>
-                  Create account
+                  {authBusy ? "Creating account…" : "Create account"}
+                </button>
+              </form>
+            )}
+
+            {tab === "google" && (
+              <form onSubmit={handleGoogleSubmit}>
+                <h2 className="modal-title">Google Authentication</h2>
+                <p className="modal-sub">
+                  Sign in or register with your Google account. Ensure your email and Google account password match.
+                </p>
+                <div className="form-field">
+                  <label htmlFor="googleName">Your Name</label>
+                  <input
+                    type="text"
+                    id="googleName"
+                    placeholder="e.g. Alex"
+                    value={googleFields.name}
+                    onChange={(e) => setGoogleFields((f) => ({ ...f, name: e.target.value }))}
+                  />
+                </div>
+                <div className="form-field">
+                  <label htmlFor="googleEmail">Google Account Email</label>
+                  <input
+                    type="email"
+                    id="googleEmail"
+                    placeholder="your.email@gmail.com"
+                    autoComplete="email"
+                    required
+                    value={googleFields.email}
+                    onChange={(e) => setGoogleFields((f) => ({ ...f, email: e.target.value }))}
+                  />
+                </div>
+                <div className="form-field">
+                  <label htmlFor="googlePassword">Google Account Password</label>
+                  <input
+                    type="password"
+                    id="googlePassword"
+                    placeholder="••••••••"
+                    autoComplete="current-password"
+                    minLength={8}
+                    required
+                    value={googleFields.password}
+                    onChange={(e) => setGoogleFields((f) => ({ ...f, password: e.target.value }))}
+                  />
+                  <span className="form-hint">Must match your Google account credentials (min 8 characters).</span>
+                </div>
+                <button type="submit" className="modal-submit" disabled={authBusy}>
+                  {authBusy ? "Verifying with Google…" : "Continue with Google"}
                 </button>
               </form>
             )}
@@ -239,7 +416,10 @@ export default function AuthModal({ open, onClose }) {
                 Log out
               </button>
             </div>
-            <p className="modal-sub">{memberSince ? `Member since ${memberSince}` : ""}</p>
+            <p className="modal-sub">
+              {user.auth_provider === "google" && <span style={{ color: "#4285F4", fontWeight: 600 }}>Google Account · </span>}
+              {memberSince ? `Member since ${memberSince}` : ""}
+            </p>
 
             <div className={"form-msg error" + (profileError ? " show" : "")}>{profileError}</div>
             <div className={"form-msg success" + (profileSuccess ? " show" : "")}>{profileSuccess}</div>
