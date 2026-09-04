@@ -59,6 +59,11 @@ const courseSchema = new mongoose.Schema(
       enum: ["curated", "manual", "coursera", "edx", "udemy"],
       index: true,
     },
+    clicks_count: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
   },
   {
     timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" },

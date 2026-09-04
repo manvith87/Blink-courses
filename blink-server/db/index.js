@@ -3,6 +3,7 @@ const Course = require("../models/Course");
 const User = require("../models/User");
 const SyncLog = require("../models/SyncLog");
 const Domain = require("../models/Domain");
+const CourseClick = require("../models/CourseClick");
 
 const MONGODB_URI =
   process.env.MONGODB_URI ||
@@ -40,4 +41,5 @@ module.exports = {
   User,
   SyncLog,
   Domain,
+  CourseClick,
 };

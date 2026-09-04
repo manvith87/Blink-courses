@@ -24,8 +24,6 @@ export default function AuthModal({ open, onClose }) {
 
   const overlayRef = useRef(null);
 
-  // Whenever the modal opens, land on the right view and reset any
-  // stale messages from a previous open.
   useEffect(() => {
     if (!open) return;
     setAuthMsg("");
@@ -110,7 +108,6 @@ export default function AuthModal({ open, onClose }) {
 
   function handleStartGoogleFlow() {
     setAuthMsg("");
-    // Pre-fill email/name if already typed in other tabs
     if (tab === "signup" && signupFields.email) {
       setGoogleFields((f) => ({
         ...f,
@@ -483,6 +480,48 @@ export default function AuthModal({ open, onClose }) {
                 Save changes
               </button>
             </form>
+
+            {/* Recently Clicked / Opened Courses */}
+            {user.clicked_courses && user.clicked_courses.length > 0 && (
+              <div style={{ marginTop: "1.75rem", borderTop: "1px solid var(--border)", paddingTop: "1.25rem" }}>
+                <h3 style={{ fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.75rem" }}>
+                  Your Visited Courses ({user.clicked_courses.length})
+                </h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", maxHeight: "180px", overflowY: "auto" }}>
+                  {user.clicked_courses.map((item, idx) => (
+                    <a
+                      key={idx}
+                      href={item.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "0.5rem 0.75rem",
+                        borderRadius: "0.5rem",
+                        backgroundColor: "var(--card-bg, rgba(255,255,255,0.04))",
+                        border: "1px solid var(--border)",
+                        fontSize: "0.825rem",
+                        textDecoration: "none",
+                        color: "inherit",
+                        transition: "border-color 0.15s ease",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", overflow: "hidden" }}>
+                        <span className="platform-tag" style={{ fontSize: "0.65rem", padding: "0.1rem 0.4rem" }}>
+                          {item.platform}
+                        </span>
+                        <span style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                          {item.course_title}
+                        </span>
+                      </div>
+                      <span style={{ color: "var(--accent, #f59e0b)", fontSize: "0.85rem", marginLeft: "0.5rem" }}>&rarr;</span>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

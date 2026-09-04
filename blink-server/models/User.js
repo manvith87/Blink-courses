@@ -1,5 +1,32 @@
 const mongoose = require("mongoose");
 
+const clickedCourseSchema = new mongoose.Schema(
+  {
+    course_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Course",
+      required: true,
+    },
+    course_title: {
+      type: String,
+      required: true,
+    },
+    platform: {
+      type: String,
+      required: true,
+    },
+    url: {
+      type: String,
+      required: true,
+    },
+    clicked_at: {
+      type: Date,
+      default: Date.now,
+    },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -37,6 +64,7 @@ const userSchema = new mongoose.Schema(
       enum: ["local", "google"],
       default: "local",
     },
+    clicked_courses: [clickedCourseSchema],
   },
   {
     timestamps: { createdAt: "createdAt", updatedAt: "updatedAt" },

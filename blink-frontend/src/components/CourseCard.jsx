@@ -1,8 +1,17 @@
+import { useAuth } from "../context/AuthContext.jsx";
+import { trackCourseClick } from "../api.js";
+
 export default function CourseCard({ course }) {
+  const { token } = useAuth();
   const category = course.category || "General";
   const blurb =
     course.blurb ||
     `Live listing from ${course.partner ? course.partner + " via " : ""}${course.platform}.`;
+
+  function handleCourseClick() {
+    const courseId = course.id || course._id || course.external_id;
+    trackCourseClick(courseId, token);
+  }
 
   return (
     <article className="card">
@@ -21,7 +30,13 @@ export default function CourseCard({ course }) {
       </div>
       <div className="card-cta">
         <span className="category-tag">{category}</span>
-        <a className="grab" href={course.url} target="_blank" rel="noopener noreferrer">
+        <a
+          className="grab"
+          href={course.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={handleCourseClick}
+        >
           Grab it <span className="arrow">→</span>
         </a>
       </div>

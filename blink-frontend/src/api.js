@@ -32,6 +32,24 @@ export function fetchCourses(params = {}) {
   return request(`/api/courses${query ? `?${query}` : ""}`);
 }
 
+export function fetchPopularCourses() {
+  return request("/api/courses/popular");
+}
+
+export function trackCourseClick(courseId, token = null) {
+  if (!courseId) return Promise.resolve();
+  const headers = { "Content-Type": "application/json" };
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+  return request(`/api/courses/${encodeURIComponent(courseId)}/click`, {
+    method: "POST",
+    headers,
+  }).catch((err) => {
+    console.warn("Click tracking note:", err.message);
+  });
+}
+
 export function signup({ name, email, password }) {
   return request("/api/auth/signup", {
     method: "POST",
@@ -78,7 +96,6 @@ export function sendChatMessage(message, history = []) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, history }),
-    // Chat replies give room for LLM generation
     signal: AbortSignal.timeout(25000),
   });
 }

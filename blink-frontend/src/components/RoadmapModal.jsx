@@ -1,5 +1,14 @@
+import { useAuth } from "../context/AuthContext.jsx";
+import { trackCourseClick } from "../api.js";
+
 export default function RoadmapModal({ open, loading, error, domain, onClose }) {
+  const { token } = useAuth();
   if (!open) return null;
+
+  function handleCourseClick(course) {
+    const courseId = course.id || course._id || course.external_id;
+    trackCourseClick(courseId, token);
+  }
 
   return (
     <div
@@ -42,6 +51,7 @@ export default function RoadmapModal({ open, loading, error, domain, onClose }) 
                           href={course.url}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={() => handleCourseClick(course)}
                         >
                           <span className="platform-tag">{course.platform}</span>
                           <span className="roadmap-course-title">{course.title}</span>

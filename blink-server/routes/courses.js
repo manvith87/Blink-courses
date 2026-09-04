@@ -1,8 +1,9 @@
 const express = require("express");
 const mongoose = require("mongoose");
-const { Course } = require("../db");
+const { Course, CourseClick, User } = require("../db");
 const adminAuth = require("../middleware/adminAuth");
 const slugify = require("../lib/slugify");
+const { verifyToken } = require("../lib/auth");
 
 const router = express.Router();
 
@@ -11,6 +12,20 @@ function getCourseQuery(id) {
     return { $or: [{ _id: id }, { external_id: id }] };
   }
   return { external_id: id };
+}
+
+// Helper to optionally extract user from Authorization header
+async function getOptionalUser(req) {
+  try {
+    const header = req.header("authorization") || "";
+    const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+    if (!token) return null;
+    const payload = verifyToken(token);
+    if (!payload?.sub) return null;
+    return await User.findById(payload.sub);
+  } catch {
+    return null;
+  }
 }
 
 // GET /api/courses?platform=Coursera&category=Programming&q=python&page=1&limit=24
@@ -53,6 +68,19 @@ router.get("/", async (req, res) => {
   }
 });
 
+// GET /api/courses/popular - top clicked courses
+router.get("/popular", async (req, res) => {
+  try {
+    const limit = Math.min(20, Number(req.query.limit) || 6);
+    const popularCourses = await Course.find()
+      .sort({ clicks_count: -1, updatedAt: -1 })
+      .limit(limit);
+    res.json(popularCourses);
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Failed to fetch popular courses" });
+  }
+});
+
 router.get("/platforms", async (req, res) => {
   try {
     const platforms = await Course.distinct("platform");
@@ -68,6 +96,67 @@ router.get("/categories", async (req, res) => {
     res.json(categories.filter(Boolean).sort());
   } catch (err) {
     res.status(500).json({ error: err.message || "Failed to fetch categories" });
+  }
+});
+
+// POST /api/courses/:id/click - Store course click in MongoDB
+router.post("/:id/click", async (req, res) => {
+  try {
+    const course = await Course.findOne(getCourseQuery(req.params.id));
+    if (!course) {
+      return res.status(404).json({ error: "Course not found" });
+    }
+
+    // 1. Increment Course click count
+    course.clicks_count = (course.clicks_count || 0) + 1;
+    await course.save();
+
+    // 2. Extract user if logged in
+    const user = await getOptionalUser(req);
+
+    // 3. Record click in CourseClick collection
+    const clickDoc = await CourseClick.create({
+      course_id: course._id,
+      course_external_id: course.external_id,
+      course_title: course.title,
+      platform: course.platform,
+      url: course.url,
+      user_id: user ? user._id : null,
+      user_email: user ? user.email : null,
+      ip_address: req.ip || req.headers["x-forwarded-for"] || null,
+      user_agent: req.headers["user-agent"] || null,
+      clicked_at: new Date(),
+    });
+
+    // 4. If logged in, save to User's clicked courses list
+    if (user) {
+      user.clicked_courses = user.clicked_courses || [];
+      // Remove prior entry if exists so latest click is at the top
+      user.clicked_courses = user.clicked_courses.filter(
+        (item) => item.course_id.toString() !== course._id.toString()
+      );
+      user.clicked_courses.unshift({
+        course_id: course._id,
+        course_title: course.title,
+        platform: course.platform,
+        url: course.url,
+        clicked_at: new Date(),
+      });
+      // Keep recent 30 clicked courses
+      if (user.clicked_courses.length > 30) {
+        user.clicked_courses = user.clicked_courses.slice(0, 30);
+      }
+      await user.save();
+    }
+
+    res.json({
+      success: true,
+      message: "Course click saved in database",
+      clicks_count: course.clicks_count,
+      click_id: clickDoc._id,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message || "Failed to record course click" });
   }
 });
 
