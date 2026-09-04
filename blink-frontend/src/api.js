@@ -1,8 +1,13 @@
-// Thin fetch wrapper around the Blink backend (see ../blink-server).
-// Every function here returns parsed JSON or throws an Error with a
-// human-readable message pulled from the API's { error } field.
+// Thin fetch wrapper around the Blink backend.
+// In production on Vercel, requests use relative paths ('/api/...') on the same origin.
+// In local Vite dev mode, requests default to http://localhost:3000.
 
-export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:3000";
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL !== undefined
+    ? import.meta.env.VITE_API_BASE_URL
+    : (typeof window !== "undefined" && window.location.hostname === "localhost" && window.location.port === "5173"
+        ? "http://localhost:3000"
+        : "");
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE_URL}${path}`, {

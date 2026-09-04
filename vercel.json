@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build --prefix blink-frontend",
+  "outputDirectory": "blink-frontend/dist",
+  "installCommand": "npm install --prefix blink-server && npm install --prefix blink-frontend",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

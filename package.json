@@ -1,0 +1,28 @@
+{
+  "name": "blink-courses",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Blink: Full-stack Free Course Directory backed by MongoDB",
+  "main": "api/index.js",
+  "scripts": {
+    "build": "npm run build --prefix blink-frontend",
+    "start": "node blink-server/server.js",
+    "dev:frontend": "npm run dev --prefix blink-frontend",
+    "dev:server": "npm start --prefix blink-server",
+    "migrate": "npm run migrate --prefix blink-server",
+    "seed": "npm run seed --prefix blink-server",
+    "sync": "npm run sync --prefix blink-server"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.10.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
