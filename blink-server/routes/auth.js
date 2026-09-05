@@ -1,107 +1,123 @@
 const express = require("express");
-const { User } = require("../db");
+const { User, AuthEvent } = require("../db");
 const { hashPassword, comparePassword, signToken } = require("../lib/auth");
+const { recordAuthEvent } = require("../lib/authEvents");
+const adminAuth = require("../middleware/adminAuth");
 
 const router = express.Router();
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Helper to decode or verify Google ID token
-async function verifyGoogleIdToken(idToken) {
-  try {
-    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
-    if (!res.ok) {
-      throw new Error("Invalid Google token");
-    }
-    const data = await res.json();
-    return {
-      email: data.email,
-      name: data.name || data.given_name || data.email.split("@")[0],
-      googleId: data.sub,
-      avatarUrl: data.picture || null,
-      emailVerified: data.email_verified === "true" || data.email_verified === true,
-    };
-  } catch (err) {
-    // If tokeninfo network fails, attempt safe JWT base64 payload decode
-    try {
-      const parts = idToken.split(".");
-      if (parts.length === 3) {
-        const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf-8"));
-        return {
-          email: payload.email,
-          name: payload.name || payload.given_name || payload.email?.split("@")[0],
-          googleId: payload.sub,
-          avatarUrl: payload.picture || null,
-          emailVerified: payload.email_verified === true,
-        };
-      }
-    } catch {
-      // ignore
-    }
-    throw new Error("Could not verify Google ID token");
+// Private audit view for the site operator. Login history must never be
+// exposed publicly, so a valid admin key is required.
+router.get("/events", adminAuth, async (req, res) => {
+  const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+  const events = await AuthEvent.find().sort({ created_at: -1 }).limit(limit).lean();
+  res.json(events);
+});
+
+// Verify configuration before any account write; otherwise a new user could
+// be created but receive no usable session token.
+router.use((req, res, next) => {
+  if (!process.env.JWT_SECRET) {
+    return res.status(503).json({ error: "Authentication is not configured" });
   }
+  next();
+});
+
+// Verify a Google ID token through Google's token-info endpoint. Directly
+// decoding JWT payloads is not verification and would allow impersonation.
+async function verifyGoogleIdToken(idToken) {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    throw new Error("Google sign-in is not configured");
+  }
+  const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
+  if (!res.ok) throw new Error("Invalid Google token");
+  const data = await res.json();
+  if (data.aud !== process.env.GOOGLE_CLIENT_ID || !data.email_verified || !data.email || !data.sub) {
+    throw new Error("Invalid Google token");
+  }
+  return {
+    email: data.email,
+    name: data.name || data.given_name || data.email.split("@")[0],
+    googleId: data.sub,
+    avatarUrl: data.picture || null,
+  };
 }
 
 // POST /api/auth/signup
 router.post("/signup", async (req, res) => {
-  const { name, email, password } = req.body || {};
+  try {
+    const { name, email, password } = req.body || {};
 
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: "name, email and password are required" });
-  }
-  if (!EMAIL_RE.test(email)) {
-    return res.status(400).json({ error: "That doesn't look like a valid email" });
-  }
-  if (password.length < 8) {
-    return res.status(400).json({ error: "Password must be at least 8 characters" });
-  }
+    if (!name || !email || !password) {
+      return res.status(400).json({ error: "name, email and password are required" });
+    }
+    if (!EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: "That doesn't look like a valid email" });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Password must be at least 8 characters" });
+    }
 
-  const normalizedEmail = email.toLowerCase().trim();
-  const existing = await User.findOne({ email: normalizedEmail });
-  if (existing) {
-    return res.status(409).json({ error: "An account with that email already exists" });
+    const normalizedEmail = email.toLowerCase().trim();
+    const existing = await User.findOne({ email: normalizedEmail });
+    if (existing) {
+      return res.status(409).json({ error: "An account with that email already exists" });
+    }
+
+    const passwordHash = hashPassword(password);
+    const user = await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      password_hash: passwordHash,
+      auth_provider: "local",
+    });
+
+    const userJson = user.toJSON();
+    await recordAuthEvent({ user, email: normalizedEmail, eventType: "signup" });
+    res.status(201).json({ token: signToken(userJson), user: userJson });
+  } catch (err) {
+    if (err?.code === 11000) return res.status(409).json({ error: "An account with that email already exists" });
+    console.error("Signup failed:", err.message);
+    res.status(500).json({ error: "Could not create account" });
   }
-
-  const passwordHash = hashPassword(password);
-  const user = await User.create({
-    name: name.trim(),
-    email: normalizedEmail,
-    password_hash: passwordHash,
-    auth_provider: normalizedEmail.endsWith("@gmail.com") ? "google" : "local",
-  });
-
-  const userJson = user.toJSON();
-  res.status(201).json({ token: signToken(userJson), user: userJson });
 });
 
 // POST /api/auth/login
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body || {};
+  try {
+    const { email, password } = req.body || {};
 
-  if (!email || !password) {
-    return res.status(400).json({ error: "email and password are required" });
+    if (!email || !password) {
+      return res.status(400).json({ error: "email and password are required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase().trim() });
+    if (!user || !comparePassword(password, user.password_hash)) {
+      await recordAuthEvent({ email: email.toLowerCase().trim(), eventType: "login_failure" });
+      return res.status(401).json({ error: "Incorrect email or password" });
+    }
+
+    const userJson = user.toJSON();
+    await recordAuthEvent({ user, email: user.email, eventType: "login_success" });
+    res.json({ token: signToken(userJson), user: userJson });
+  } catch (err) {
+    console.error("Login failed:", err.message);
+    res.status(500).json({ error: "Could not log in" });
   }
-
-  const user = await User.findOne({ email: email.toLowerCase().trim() });
-  if (!user || !comparePassword(password, user.password_hash)) {
-    return res.status(401).json({ error: "Incorrect email or password" });
-  }
-
-  const userJson = user.toJSON();
-  res.json({ token: signToken(userJson), user: userJson });
 });
 
 // POST /api/auth/google
-// Supports:
-// 1. Google ID Token ({ credential, password })
-// 2. Direct Google account sign-in ({ email, name, password, google_id, avatar_url })
-// Enforces: Email and password consistency
+// Accepts a verified Google Identity Services credential. Google accounts are
+// still given a local password here because the existing profile UI supports
+// changing it; it is never accepted as proof of a Google identity.
 router.post("/google", async (req, res) => {
   try {
-    let email = req.body?.email;
-    let name = req.body?.name;
-    let googleId = req.body?.google_id;
-    let avatarUrl = req.body?.avatar_url;
+    let email;
+    let name;
+    let googleId;
+    let avatarUrl;
     const password = req.body?.password;
 
     // If Google ID token was sent from Google Identity Services button
@@ -111,6 +127,8 @@ router.post("/google", async (req, res) => {
       name = verified.name || name;
       googleId = verified.googleId;
       avatarUrl = verified.avatarUrl || avatarUrl;
+    } else {
+      return res.status(400).json({ error: "A verified Google credential is required" });
     }
 
     if (!email) {
@@ -135,6 +153,7 @@ router.post("/google", async (req, res) => {
       await user.save();
 
       const userJson = user.toJSON();
+      await recordAuthEvent({ user, email: user.email, eventType: "login_success" });
       return res.json({ token: signToken(userJson), user: userJson, isNewUser: false });
     }
 
@@ -160,6 +179,7 @@ router.post("/google", async (req, res) => {
     });
 
     const userJson = user.toJSON();
+    await recordAuthEvent({ user, email: user.email, eventType: "signup" });
     return res.status(201).json({ token: signToken(userJson), user: userJson, isNewUser: true });
   } catch (err) {
     res.status(400).json({ error: err.message || "Google authentication failed" });

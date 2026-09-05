@@ -36,11 +36,34 @@ MongoDB database configured via `MONGODB_URI` (default `mongodb://127.0.0.1:2701
   manually through the API, or pulled from a live sync. `external_id`
   is the dedupe key (e.g. `coursera-12345`, `fcc-rwd`), so re-seeding
   or re-syncing updates existing documents instead of creating duplicates.
-- **users** — user authentication, bios, and password hashes.
+- **users** — one document per account: display name, unique email, optional
+  bio, timestamps, and a bcrypt password hash (never a raw password).
 - **domains** — interactive domain roadmap steps referencing course documents.
 - **sync_log** — one entry per sync attempt per source, so you can see
   what succeeded, what failed, and why (`GET /api/status` surfaces
   the last 10).
+- **courseclicks** — course-link clicks, used for popular-course rankings and
+  a signed-in user's recent-course history.
+- **authevents** — successful/failed logins and sign-ups. It stores a name and
+  email when known plus a timestamp, never a password or JWT.
+
+MongoDB calls these **collections**, rather than SQL tables. Mongoose creates
+collections and indexes when the app connects. Run `npm run migrate` after a
+schema change to synchronize indexes, and `npm run seed` to add/refresh the
+built-in courses and domain roadmaps.
+
+### Add a course or a domain
+
+To add one course, call `POST /api/courses` with the `x-admin-key` header.
+`title`, `platform`, and `url` are required; the category, level, duration,
+access, and blurb are optional. `external_id` is the stable deduplication key;
+if omitted, Blink creates one from the platform and title.
+
+A domain is a learning roadmap (for example, Web Development) with ordered
+steps that reference course IDs. Edit `lib/domainsData.js` using stable IDs
+from `lib/staticCourses.js`, then run `npm run seed`. A new course platform
+needs no schema change: set its `platform` field. For a new automatic provider,
+add a client in `lib/` and register it in `lib/syncService.js`.
 
 ## API reference
 
@@ -59,6 +82,7 @@ All responses are JSON.
 | GET    | `/api/status`           | none        | Counts by source + recent sync history        |
 | POST   | `/api/auth/signup`      | none        | Create an account. Body: `name`, `email`, `password` (8+ chars). Returns `{ token, user }` |
 | POST   | `/api/auth/login`       | none        | Body: `email`, `password`. Returns `{ token, user }` |
+| GET    | `/api/auth/events`      | `x-admin-key` | Last sign-up/login audit events (private admin view) |
 | GET    | `/api/profile`          | `Bearer` token | Current user's profile                     |
 | PUT    | `/api/profile`          | `Bearer` token | Update `name`, `email`, `bio`, or password (send `currentPassword` + `newPassword` together) |
 | POST   | `/api/chat`             | none        | Chat with the course-finding assistant. Body: `{ message, history: [{role, content}, ...] }` |
@@ -189,16 +213,19 @@ Warning: some roadmap steps referenced course IDs that don't exist yet:
 
 ## Deploying
 
-Plain Node + a single SQLite file. Runs on Render, Railway, Fly.io,
-or any small VPS with **Node 22.13+** — check your host's Node
-version setting, since some default to an older LTS. Two things to
-get right on whichever host you pick:
+This repository is configured to deploy the Vite frontend and Express API as
+one Vercel project. Before deploying, add these Vercel environment variables:
 
-1. **Persistent disk for `blink.db`.** Some free tiers wipe the
-   filesystem on every redeploy — if that happens to you, either pay
-   for a persistent volume/disk, or point `DB_PATH` at one.
-2. **Set `CORS_ORIGIN`** to your real frontend's domain instead of
-   `*` once you're live.
+1. `MONGODB_URI` — a MongoDB Atlas connection string. In Atlas, allow Vercel
+   network access and create a database user with access to the `blink`
+   database.
+2. `JWT_SECRET` — a long, random private value used to sign login sessions.
+3. `ADMIN_API_KEY` — a different long, random private value for course/admin
+   endpoints.
+4. `CORS_ORIGIN` — the public site URL (or leave `*` while testing).
+
+Without `MONGODB_URI`, Vercel cannot persist accounts; `/api/*` returns a
+clear 503 rather than pretending that sign-up worked.
 
 ## Wiring up the frontend
 

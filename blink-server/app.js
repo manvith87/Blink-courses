@@ -23,13 +23,9 @@ app.use(async (req, res, next) => {
     next();
   } catch (err) {
     console.error("[Database Connection Error]:", err.message);
-    // Don't crash immediately on health/root requests
-    if (req.path === "/" || req.path === "/api/status") {
-      return res.status(503).json({
-        error: "Database connection failed. Please ensure MONGODB_URI is set correctly in environment variables.",
-      });
-    }
-    next(err);
+    return res.status(503).json({
+      error: "Database unavailable. Configure MONGODB_URI in the hosting environment and try again.",
+    });
   }
 });
 

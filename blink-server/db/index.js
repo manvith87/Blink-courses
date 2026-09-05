@@ -4,6 +4,7 @@ const User = require("../models/User");
 const SyncLog = require("../models/SyncLog");
 const Domain = require("../models/Domain");
 const CourseClick = require("../models/CourseClick");
+const AuthEvent = require("../models/AuthEvent");
 
 const MONGODB_URI =
   process.env.MONGODB_URI ||
@@ -47,4 +48,5 @@ module.exports = {
   SyncLog,
   Domain,
   CourseClick,
+  AuthEvent,
 };
